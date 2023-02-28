@@ -3,7 +3,6 @@ import getpass
 from RangeAnalyser import RangeAnalyser
 import argparse
 
-
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='')
@@ -32,5 +31,5 @@ if __name__ == "__main__":
     rangeAnalyser.analyse()
     if(args.output):
         rangeAnalyser.write_blacklist(args.output)
-
+        
 

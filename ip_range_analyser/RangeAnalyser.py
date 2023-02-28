@@ -8,6 +8,14 @@ import sys
 import requests
 from geolite2 import geolite2
 from tqdm import tqdm
+import line_profiler
+import atexit
+
+
+#profile = line_profiler.LineProfiler()
+#atexit.register(profile.print_stats)
+
+
 
 
 class RangeAnalyser:
@@ -110,7 +118,7 @@ class RangeAnalyser:
         ip = f"{ip[:26]}.{ip[26:]}"
         return '.'.join([str(int(x, 2)) for x in ip.split('.')])
 
-    def __find_ip_range(self, ip_bin, mask):
+    def __find_ip_range(self, ip_bin, mcc, mask):
         """
         Group all IP in the range found
 
@@ -121,19 +129,19 @@ class RangeAnalyser:
 
         """
 
-        interesting_ip_range = []
+        ip_ranges = []
         ip_bin_masked = self.__apply_mask(ip_bin, mask)
         occurrences = collections.Counter(ip_bin_masked)
-
-        for j, occ in enumerate(occurrences.most_common(len(occurrences))):
+        mcc = len(occurrences) if mcc is None else min(mcc, len(occurrences))
+        for mcc, occ in enumerate(occurrences.most_common(mcc)):
             # if mask is fill at more than (self.threshold*100)% of its capacity then we found a IP range
+            print(occ[1])
             if occ[1] < self.threshold*(2**(32-mask)):
                 break
             #Append percentage
             percentage = (occ[1]/(2**(32-mask)))*100
-            interesting_ip_range.append((occ[0], percentage, mask,))
-
-        return interesting_ip_range
+            ip_ranges.append((occ[0], percentage, mask,))
+        return ip_ranges, mcc
 
     def __delete_sub_network(self, ip_mask_parent, ip_mask_children, mask_parent_value):
         """
@@ -144,16 +152,14 @@ class RangeAnalyser:
 
         :return: ip_mask_parent + (ip_mask_children - ip_mask_children include in ip_mask_parent)
         """
-
         ip_mask_merged = ip_mask_parent[:]
-
         # Append IP only if its not include in ip_mask_parents
         for occ in ip_mask_children:
             if(occ[0][:mask_parent_value] not in [x[0] for x in ip_mask_parent]):
                 ip_mask_merged.append(occ)
-
         return ip_mask_merged
-
+    
+    
     def analyse(self, range_min=18, range_max=30):
         """
         Process analyse of IP, find ranges, filter and sort IP, compute stats and find country
@@ -162,7 +168,9 @@ class RangeAnalyser:
         :param range_max: min size of the range
 
         """
-
+         # Sort IP in two lists, ip that actually are find in  IP ranges and the others
+        ip_included_in_range = []
+        ip_excluded_from_range = []
         # Convert IP to binary data
         ip_bin = []
         ip_bin.extend(self.__convert_to_binary(self.source_ip[x])
@@ -172,41 +180,34 @@ class RangeAnalyser:
         with tqdm(total=range_max-range_min,desc='Finding IP range') as pbar:
 
             j = range_max
-            ip_range = self.__find_ip_range(ip_bin, j)
-
-            while(j > range_min):
-                ip_range_above = self.__find_ip_range(ip_bin, j-1)
-                ip_range = self.__delete_sub_network(ip_range_above, ip_range, j-1)
+            ip_ranges = []
+            mcc = None
+            while(j >= range_min):
+                ip_ranges_above, mcc = self.__find_ip_range(ip_bin, mcc, j-1)
+                ip_ranges = self.__delete_sub_network(ip_ranges_above, ip_ranges, j-1)
                 pbar.update(1)
                 j -= 1
-
-
-        # Sort IP in two lists, ip that actually are find in  IP ranges and the others
-        ip_in_range = []
-        ip_out_range = []
 
         with tqdm(total=len(ip_bin),desc='Filtering results') as pbar:
             for bin in ip_bin:
                 is_in = False
-                for network, percentage, mask, in ip_range:
+                for network, percentage, mask, in ip_ranges:
                     if(bin[:mask] == network):
-                        ip_in_range.append(self.__convert_to_ipv4(bin))
+                        ip_included_in_range.append(self.__convert_to_ipv4(bin))
                         is_in = True
                         break
                 if(not is_in):
-                    ip_out_range.append(self.__convert_to_ipv4(bin))
+                    ip_excluded_from_range.append(self.__convert_to_ipv4(bin))
                 pbar.update(1)
 
-        ip_range = [
+        ip_ranges = [
             (f"{self.__convert_to_ipv4(bin)}/{str(mask)}", percentage)
-            for (bin, percentage, mask) in ip_range
+            for (bin, percentage, mask) in ip_ranges
         ]
-
-
         # Compute Stats
         if self.stats:
-            self._analyse(ip_in_range, ip_out_range, ip_range)
-        self.blacklist_ip = [x for (x,y) in ip_range] + ip_out_range
+            self._analyse(ip_included_in_range, ip_excluded_from_range, ip_ranges)
+        self.blacklist_ip = [x for (x,y) in ip_ranges] + ip_excluded_from_range
 
     def _analyse(self, ip_in_range, ip_out_range, ip_range):
         locations_country = []
