@@ -16,8 +16,6 @@ import atexit
 #atexit.register(profile.print_stats)
 
 
-
-
 class RangeAnalyser:
     ''' IP RANGE ANALYSER '''
 
@@ -135,7 +133,6 @@ class RangeAnalyser:
         mcc = len(occurrences) if mcc is None else min(mcc, len(occurrences))
         for mcc, occ in enumerate(occurrences.most_common(mcc)):
             # if mask is fill at more than (self.threshold*100)% of its capacity then we found a IP range
-            print(occ[1])
             if occ[1] < self.threshold*(2**(32-mask)):
                 break
             #Append percentage
@@ -238,12 +235,12 @@ class RangeAnalyser:
         print(f"Sample : {str(ip_range[:min(len(ip_range), 5)])}")
         print(f"Line saved :{str(len(ip_in_range) - len(ip_range))}")
 
-        occurrences = self._find_most_common(
+        self._find_most_common(
             locations_country,
             total,
             "Country/Continent(if country did'nt found) top results \n%s\n",
         )
-        occurrences = self._find_most_common(
+        self._find_most_common(
             locations_subdivisions, total, "Subdivisions top results \n%s\n"
         )
 
