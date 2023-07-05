@@ -8,7 +8,6 @@ import sys
 import requests
 from geolite2 import geolite2
 from tqdm import tqdm
-import line_profiler
 import atexit
 
 
